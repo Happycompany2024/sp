@@ -1,0 +1,882 @@
+<html lang="zh-CN"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>媒体播放器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#165DFF',
+            secondary: '#7B61FF',
+            neutral: '#1D2129',
+            'neutral-light': '#4E5969',
+            'neutral-lighter': '#C9CDD4',
+            'neutral-lightest': '#F2F3F5',
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .player-shadow {
+        box-shadow: 0 10px 25px -5px rgba(22, 93, 255, 0.1), 0 8px 10px -6px rgba(22, 93, 255, 0.1);
+      }
+      .hover-scale {
+        transition: transform 0.2s ease-in-out;
+      }
+      .hover-scale:hover {
+        transform: scale(1.05);
+      }
+      .progress-container {
+        height: 4px;
+        background-color: rgba(201, 205, 212, 0.5);
+        cursor: pointer;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background-color: #165DFF;
+        position: relative;
+      }
+      .progress-thumb {
+        position: absolute;
+        right: -6px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 12px;
+        height: 12px;
+        background-color: white;
+        border-radius: 50%;
+        box-shadow: 0 0 5px rgba(22, 93, 255, 0.5);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .progress-container:hover .progress-thumb {
+        opacity: 1;
+      }
+      .control-btn {
+        @apply flex items-center justify-center rounded-full transition-all duration-200 ease-in-out;
+      }
+      .control-btn:hover {
+        @apply bg-primary/10;
+      }
+      .file-drop-zone {
+        @apply border-2 border-dashed border-neutral-lighter rounded-xl p-8 text-center transition-all duration-300;
+      }
+      .file-drop-zone.active {
+        @apply border-primary bg-primary/5;
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-gradient-to-br from-neutral-lightest to-white min-h-screen flex flex-col">
+  <!-- 头部 -->
+  <header class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-music text-primary text-2xl"></i>
+        <h1 class="text-xl font-bold text-neutral">易白板自研媒体播放器</h1>
+      </div>
+      <div class="flex items-center space-x-4">
+        <button id="theme-toggle" class="p-2 rounded-full hover:bg-neutral-lightest transition-colors">
+          <i class="fa fa-moon-o text-neutral-light"></i>
+        </button>
+        <button id="help-btn" class="p-2 rounded-full hover:bg-neutral-lightest transition-colors">
+          <i class="fa fa-question-circle text-neutral-light"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要内容 -->
+  <main class="flex-grow container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+      <!-- 文件上传区域 -->
+      <section class="mb-8">
+        <div id="file-drop-zone" class="file-drop-zone">
+          <i class="fa fa-cloud-upload text-4xl text-neutral-lighter mb-4"></i>
+          <h3 class="text-lg font-medium text-neutral mb-2">拖放文件到此处上传</h3>
+          <p class="text-sm text-neutral-light mb-4">支持 MP3、WAV、MP4、WebM 等格式</p>
+          <label class="inline-block bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors cursor-pointer">
+            <input type="file" id="file-input" class="hidden" accept="audio/*, video/*">
+            <i class="fa fa-file-o mr-2"></i>选择文件
+          </label>
+        </div>
+      </section>
+
+      <!-- 文件列表 -->
+      <section class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-neutral">已上传文件</h2>
+          <button id="clear-files" class="text-sm text-primary hover:text-primary/80 transition-colors">
+            <i class="fa fa-trash-o mr-1"></i>清空列表
+          </button>
+        </div>
+        <div id="file-list" class="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+          <div class="text-center py-8 text-neutral-light">
+            <i class="fa fa-film mr-2"></i>暂无文件
+          </div>
+        </div>
+      </section>
+
+      <!-- 播放器 -->
+      <section id="player-container" class="mb-8 opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl player-shadow overflow-hidden">
+          <!-- 媒体展示区 -->
+          <div id="media-display" class="relative bg-black aspect-video">
+            <video id="video-player" class="w-full h-full object-contain"></video>
+            <audio id="audio-player" class="w-full"></audio>
+            <div id="no-media" class="absolute inset-0 flex items-center justify-center bg-neutral">
+              <div class="text-center text-white">
+                <i class="fa fa-play-circle-o text-5xl mb-4"></i>
+                <p>选择一个媒体文件开始播放</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 播放控制 -->
+          <div class="p-4">
+            <div class="mb-3">
+              <h3 id="current-filename" class="text-lg font-medium text-neutral truncate">未选择文件</h3>
+              <p id="current-fileinfo" class="text-sm text-neutral-light">--:-- / --:--</p>
+            </div>
+            
+            <!-- 进度条 -->
+            <div class="mb-4">
+              <div id="progress-container" class="progress-container">
+                <div id="progress-bar" class="progress-bar">
+                  <div class="progress-thumb"></div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 控制按钮 -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1">
+                <button id="playback-speed" class="text-sm text-neutral-light px-3 py-1 rounded hover:bg-neutral-lightest transition-colors">
+                  1.0x
+                </button>
+              </div>
+              
+              <div class="flex items-center space-x-4">
+                <button id="shuffle-btn" class="control-btn p-2 text-neutral-light hover:text-primary">
+                  <i class="fa fa-random"></i>
+                </button>
+                <button id="prev-btn" class="control-btn p-2 text-neutral-light hover:text-primary">
+                  <i class="fa fa-step-backward"></i>
+                </button>
+                <button id="play-btn" class="control-btn p-3 bg-primary text-white hover:bg-primary/90">
+                  <i class="fa fa-play"></i>
+                </button>
+                <button id="next-btn" class="control-btn p-2 text-neutral-light hover:text-primary">
+                  <i class="fa fa-step-forward"></i>
+                </button>
+                <button id="loop-btn" class="control-btn p-2 text-neutral-light hover:text-primary">
+                  <i class="fa fa-repeat"></i>
+                </button>
+              </div>
+              
+              <div class="flex items-center space-x-3">
+                <button id="mute-btn" class="control-btn p-2 text-neutral-light hover:text-primary">
+                  <i class="fa fa-volume-up"></i>
+                </button>
+                <div id="volume-container" class="w-24 hidden md:block">
+                  <div class="progress-container">
+                    <div id="volume-bar" class="progress-bar" style="width: 80%">
+                      <div class="progress-thumb"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-white border-t border-neutral-lightest py-4">
+    <div class="container mx-auto px-4 text-center text-neutral-light text-sm">
+      <p>© 2025易白板自研媒体播放器 | 简单、高效的本地媒体播放工具</p>
+    </div>
+  </footer>
+
+  <!-- 帮助模态框 -->
+  <div id="help-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-white rounded-xl max-w-md w-full mx-4 p-6 shadow-xl transform scale-95 transition-transform duration-300">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold text-neutral">使用帮助</h3>
+        <button id="close-help" class="text-neutral-light hover:text-neutral transition-colors">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="space-y-4 text-neutral-light">
+        <div>
+          <h4 class="font-medium text-neutral mb-1">如何上传文件？</h4>
+          <p>你可以通过拖放文件到上传区域，或者点击"选择文件"按钮来上传本地媒体文件。</p>
+        </div>
+        <div>
+          <h4 class="font-medium text-neutral mb-1">支持哪些文件格式？</h4>
+          <p>支持常见的音频格式（MP3、WAV、OGG等）和视频格式（MP4、WebM、MKV等）。</p>
+        </div>
+        <div>
+          <h4 class="font-medium text-neutral mb-1">如何控制播放？</h4>
+          <p>使用播放器底部的控制按钮可以播放/暂停、调整音量、快进/快退和调整播放速度。</p>
+        </div>
+      </div>
+      <div class="mt-6 text-center">
+        <button id="got-it" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors">
+          明白了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // DOM 元素
+    const fileDropZone = document.getElementById('file-drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileList = document.getElementById('file-list');
+    const playerContainer = document.getElementById('player-container');
+    const videoPlayer = document.getElementById('video-player');
+    const audioPlayer = document.getElementById('audio-player');
+    const noMedia = document.getElementById('no-media');
+    const currentFilename = document.getElementById('current-filename');
+    const currentFileinfo = document.getElementById('current-fileinfo');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const playBtn = document.getElementById('play-btn');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const muteBtn = document.getElementById('mute-btn');
+    const volumeBar = document.getElementById('volume-bar');
+    const volumeContainer = document.getElementById('volume-container');
+    const playbackSpeed = document.getElementById('playback-speed');
+    const loopBtn = document.getElementById('loop-btn');
+    const shuffleBtn = document.getElementById('shuffle-btn');
+    const clearFilesBtn = document.getElementById('clear-files');
+    const helpBtn = document.getElementById('help-btn');
+    const helpModal = document.getElementById('help-modal');
+    const closeHelp = document.getElementById('close-help');
+    const gotIt = document.getElementById('got-it');
+    const themeToggle = document.getElementById('theme-toggle');
+
+    // 状态变量
+    let mediaFiles = [];
+    let currentFileIndex = -1;
+    let isLooping = false;
+    let isShuffling = false;
+    let isPlaying = false;
+    let currentPlayer = null; // 跟踪当前活动的播放器(video/audio)
+    let darkMode = false;
+
+    // 初始化
+    init();
+
+    function init() {
+      setupEventListeners();
+      checkThemePreference();
+    }
+
+    function setupEventListeners() {
+      // 文件上传相关
+      fileDropZone.addEventListener('dragover', handleDragOver);
+      fileDropZone.addEventListener('dragleave', handleDragLeave);
+      fileDropZone.addEventListener('drop', handleDrop);
+      fileInput.addEventListener('change', handleFileSelect);
+      clearFilesBtn.addEventListener('click', clearFileList);
+
+      // 播放器控制
+      playBtn.addEventListener('click', togglePlayPause);
+      prevBtn.addEventListener('click', playPrevious);
+      nextBtn.addEventListener('click', playNext);
+      muteBtn.addEventListener('click', toggleMute);
+      volumeContainer.addEventListener('click', adjustVolume);
+      progressContainer.addEventListener('click', seek);
+      playbackSpeed.addEventListener('click', changePlaybackSpeed);
+      loopBtn.addEventListener('click', toggleLoop);
+      shuffleBtn.addEventListener('click', toggleShuffle);
+
+      // 帮助模态框
+      helpBtn.addEventListener('click', showHelpModal);
+      closeHelp.addEventListener('click', hideHelpModal);
+      gotIt.addEventListener('click', hideHelpModal);
+
+      // 主题切换
+      themeToggle.addEventListener('click', toggleTheme);
+
+      // 窗口大小变化时调整UI
+      window.addEventListener('resize', adjustUI);
+    }
+
+    // 文件处理相关函数
+    function handleDragOver(e) {
+      e.preventDefault();
+      fileDropZone.classList.add('active');
+    }
+
+    function handleDragLeave() {
+      fileDropZone.classList.remove('active');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      fileDropZone.classList.remove('active');
+      
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handleFiles(files);
+      }
+    }
+
+    function handleFileSelect(e) {
+      const files = e.target.files;
+      if (files.length > 0) {
+        handleFiles(files);
+        // 重置文件输入，允许重复选择同一文件
+        fileInput.value = '';
+      }
+    }
+
+    function handleFiles(files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (isMediaFile(file)) {
+          addFileToList(file);
+        } else {
+          showNotification(`"${file.name}" 不是支持的媒体格式`);
+        }
+      }
+    }
+
+    function isMediaFile(file) {
+      const mediaTypes = ['audio/', 'video/'];
+      return mediaTypes.some(type => file.type.startsWith(type));
+    }
+
+    function addFileToList(file) {
+      // 检查文件是否已在列表中
+      if (mediaFiles.some(f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified)) {
+        showNotification(`"${file.name}" 已在列表中`);
+        return;
+      }
+
+      // 添加到文件列表
+      const fileObj = {
+        name: file.name,
+        type: file.type,
+        size: formatFileSize(file.size),
+        file: file,
+        url: URL.createObjectURL(file)
+      };
+      mediaFiles.push(fileObj);
+
+      // 更新UI
+      updateFileList();
+      
+      // 如果是第一个文件，自动加载并播放
+      if (mediaFiles.length === 1) {
+        loadFile(0);
+        play();
+      }
+    }
+
+    function updateFileList() {
+      fileList.innerHTML = '';
+      
+      if (mediaFiles.length === 0) {
+        fileList.innerHTML = `
+          <div class="text-center py-8 text-neutral-light">
+            <i class="fa fa-film mr-2"></i>暂无文件
+          </div>
+        `;
+        return;
+      }
+
+      mediaFiles.forEach((file, index) => {
+        const isAudio = file.type.startsWith('audio/');
+        const fileItem = document.createElement('div');
+        fileItem.className = `flex items-center justify-between p-3 rounded-lg ${index === currentFileIndex ? 'bg-primary/5 border-l-4 border-primary' : 'hover:bg-neutral-lightest/50'} transition-all duration-200`;
+        fileItem.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <i class="fa ${isAudio ? 'fa-music' : 'fa-film'} text-primary"></i>
+            </div>
+            <div class="flex-grow min-w-0">
+              <h4 class="text-sm font-medium text-neutral truncate">${file.name}</h4>
+              <p class="text-xs text-neutral-light">${isAudio ? '音频' : '视频'} • ${file.size}</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button class="play-file p-2 text-neutral-light hover:text-primary transition-colors" data-index="${index}">
+              <i class="fa fa-play"></i>
+            </button>
+            <button class="delete-file p-2 text-neutral-light hover:text-red-500 transition-colors" data-index="${index}">
+              <i class="fa fa-trash-o"></i>
+            </button>
+          </div>
+        `;
+        fileList.appendChild(fileItem);
+
+        // 添加点击事件
+        fileItem.querySelector('.play-file').addEventListener('click', (e) => {
+          const idx = parseInt(e.currentTarget.dataset.index);
+          loadFile(idx);
+          play();
+        });
+
+        fileItem.querySelector('.delete-file').addEventListener('click', (e) => {
+          const idx = parseInt(e.currentTarget.dataset.index);
+          deleteFile(idx);
+        });
+      });
+    }
+
+    function deleteFile(index) {
+      // 释放文件URL
+      URL.revokeObjectURL(mediaFiles[index].url);
+      
+      // 从列表中移除
+      mediaFiles.splice(index, 1);
+      
+      // 如果删除的是当前播放的文件，停止播放
+      if (index === currentFileIndex) {
+        stop();
+        if (mediaFiles.length > 0) {
+          loadFile(0);
+        } else {
+          resetPlayer();
+        }
+      } else if (index < currentFileIndex) {
+        // 更新当前索引
+        currentFileIndex--;
+      }
+      
+      // 更新UI
+      updateFileList();
+    }
+
+    function clearFileList() {
+      // 释放所有文件URL
+      mediaFiles.forEach(file => {
+        URL.revokeObjectURL(file.url);
+      });
+      
+      // 清空列表
+      mediaFiles = [];
+      currentFileIndex = -1;
+      
+      // 停止播放并重置播放器
+      stop();
+      resetPlayer();
+      
+      // 更新UI
+      updateFileList();
+    }
+
+    // 播放器控制函数
+    function loadFile(index) {
+      if (index < 0 || index >= mediaFiles.length) return;
+      
+      // 如果有当前播放的文件，停止它
+      if (currentPlayer) {
+        currentPlayer.pause();
+      }
+      
+      // 更新当前文件索引
+      currentFileIndex = index;
+      
+      // 获取文件信息
+      const file = mediaFiles[index];
+      const isAudio = file.type.startsWith('audio/');
+      
+      // 更新UI
+      currentFilename.textContent = file.name;
+      currentFileinfo.textContent = '00:00 / 00:00';
+      updateFileList();
+      
+      // 显示播放器
+      playerContainer.style.opacity = '1';
+      
+      // 隐藏之前的播放器，显示当前需要的播放器
+      videoPlayer.style.display = isAudio ? 'none' : 'block';
+      audioPlayer.style.display = isAudio ? 'block' : 'none';
+      noMedia.style.display = 'none';
+      
+      // 设置媒体源
+      if (isAudio) {
+        audioPlayer.src = file.url;
+        currentPlayer = audioPlayer;
+      } else {
+        videoPlayer.src = file.url;
+        currentPlayer = videoPlayer;
+      }
+      
+      // 添加事件监听器
+      currentPlayer.addEventListener('timeupdate', updateProgress);
+      currentPlayer.addEventListener('loadedmetadata', updateDuration);
+      currentPlayer.addEventListener('ended', handleMediaEnd);
+      currentPlayer.addEventListener('error', handleMediaError);
+      
+      // 加载媒体
+      currentPlayer.load();
+    }
+
+    function play() {
+      if (!currentPlayer) return;
+      
+      currentPlayer.play()
+        .then(() => {
+          isPlaying = true;
+          playBtn.innerHTML = '<i class="fa fa-pause"></i>';
+        })
+        .catch(error => {
+          console.error('播放错误:', error);
+          showNotification('播放失败，请尝试其他文件');
+        });
+    }
+
+    function pause() {
+      if (!currentPlayer) return;
+      
+      currentPlayer.pause();
+      isPlaying = false;
+      playBtn.innerHTML = '<i class="fa fa-play"></i>';
+    }
+
+    function togglePlayPause() {
+      if (isPlaying) {
+        pause();
+      } else {
+        play();
+      }
+    }
+
+    function stop() {
+      if (!currentPlayer) return;
+      
+      currentPlayer.pause();
+      currentPlayer.currentTime = 0;
+      isPlaying = false;
+      playBtn.innerHTML = '<i class="fa fa-play"></i>';
+      updateProgress();
+    }
+
+    function playPrevious() {
+      if (mediaFiles.length === 0) return;
+      
+      let prevIndex = currentFileIndex - 1;
+      if (prevIndex < 0) {
+        prevIndex = mediaFiles.length - 1;
+      }
+      
+      loadFile(prevIndex);
+      play();
+    }
+
+    function playNext() {
+      if (mediaFiles.length === 0) return;
+      
+      let nextIndex = currentFileIndex + 1;
+      if (nextIndex >= mediaFiles.length) {
+        nextIndex = 0;
+      }
+      
+      loadFile(nextIndex);
+      play();
+    }
+
+    function toggleMute() {
+      if (!currentPlayer) return;
+      
+      currentPlayer.muted = !currentPlayer.muted;
+      updateVolumeUI();
+    }
+
+    function adjustVolume(e) {
+      if (!currentPlayer) return;
+      
+      const rect = volumeContainer.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      currentPlayer.volume = Math.max(0, Math.min(1, pos));
+      updateVolumeUI();
+    }
+
+    function updateVolumeUI() {
+      if (!currentPlayer) return;
+      
+      const volume = currentPlayer.volume;
+      volumeBar.style.width = `${volume * 100}%`;
+      
+      if (currentPlayer.muted || volume === 0) {
+        muteBtn.innerHTML = '<i class="fa fa-volume-off"></i>';
+      } else if (volume < 0.5) {
+        muteBtn.innerHTML = '<i class="fa fa-volume-down"></i>';
+      } else {
+        muteBtn.innerHTML = '<i class="fa fa-volume-up"></i>';
+      }
+    }
+
+    function seek(e) {
+      if (!currentPlayer || !currentPlayer.duration) return;
+      
+      const rect = progressContainer.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      currentPlayer.currentTime = pos * currentPlayer.duration;
+    }
+
+    function updateProgress() {
+      if (!currentPlayer || !currentPlayer.duration) return;
+      
+      const percent = (currentPlayer.currentTime / currentPlayer.duration) * 100;
+      progressBar.style.width = `${percent}%`;
+      
+      // 更新时间显示
+      const currentTime = formatTime(currentPlayer.currentTime);
+      const duration = formatTime(currentPlayer.duration);
+      currentFileinfo.textContent = `${currentTime} / ${duration}`;
+    }
+
+    function updateDuration() {
+      if (!currentPlayer || !currentPlayer.duration) return;
+      
+      // 更新时间显示
+      const duration = formatTime(currentPlayer.duration);
+      currentFileinfo.textContent = `00:00 / ${duration}`;
+    }
+
+    function changePlaybackSpeed() {
+      if (!currentPlayer) return;
+      
+      const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+      const currentSpeed = currentPlayer.playbackRate;
+      const currentIndex = speeds.indexOf(currentSpeed);
+      const nextIndex = (currentIndex + 1) % speeds.length;
+      const newSpeed = speeds[nextIndex];
+      
+      currentPlayer.playbackRate = newSpeed;
+      playbackSpeed.textContent = `${newSpeed}x`;
+    }
+
+    function toggleLoop() {
+      isLooping = !isLooping;
+      loopBtn.classList.toggle('text-primary', isLooping);
+    }
+
+    function toggleShuffle() {
+      isShuffling = !isShuffling;
+      shuffleBtn.classList.toggle('text-primary', isShuffling);
+    }
+
+    function handleMediaEnd() {
+      if (isLooping) {
+        // 单曲循环
+        currentPlayer.currentTime = 0;
+        play();
+      } else if (isShuffling && mediaFiles.length > 1) {
+        // 随机播放下一首
+        let randomIndex;
+        do {
+          randomIndex = Math.floor(Math.random() * mediaFiles.length);
+        } while (randomIndex === currentFileIndex);
+        
+        loadFile(randomIndex);
+        play();
+      } else if (currentFileIndex < mediaFiles.length - 1) {
+        // 播放下一首
+        playNext();
+      } else {
+        // 播放列表结束
+        pause();
+        currentPlayer.currentTime = 0;
+      }
+    }
+
+    function handleMediaError() {
+      showNotification(`播放错误: ${currentPlayer.error.message}`);
+      console.error('媒体错误:', currentPlayer.error);
+    }
+
+    function resetPlayer() {
+      if (currentPlayer) {
+        currentPlayer.pause();
+        currentPlayer.removeEventListener('timeupdate', updateProgress);
+        currentPlayer.removeEventListener('loadedmetadata', updateDuration);
+        currentPlayer.removeEventListener('ended', handleMediaEnd);
+        currentPlayer.removeEventListener('error', handleMediaError);
+        currentPlayer = null;
+      }
+      
+      videoPlayer.style.display = 'none';
+      audioPlayer.style.display = 'none';
+      noMedia.style.display = 'flex';
+      currentFilename.textContent = '未选择文件';
+      currentFileinfo.textContent = '--:-- / --:--';
+      playerContainer.style.opacity = '0.5';
+      isPlaying = false;
+      playBtn.innerHTML = '<i class="fa fa-play"></i>';
+    }
+
+    // 辅助函数
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatTime(seconds) {
+      const minutes = Math.floor(seconds / 60);
+      seconds = Math.floor(seconds % 60);
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function showNotification(message) {
+      // 创建通知元素
+      const notification = document.createElement('div');
+      notification.className = 'fixed bottom-4 right-4 bg-neutral text-white px-4 py-2 rounded-lg shadow-lg transform translate-y-16 opacity-0 transition-all duration-300 z-50';
+      notification.textContent = message;
+      
+      // 添加到页面
+      document.body.appendChild(notification);
+      
+      // 显示通知
+      setTimeout(() => {
+        notification.classList.remove('translate-y-16', 'opacity-0');
+      }, 10);
+      
+      // 3秒后隐藏
+      setTimeout(() => {
+        notification.classList.add('translate-y-16', 'opacity-0');
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 300);
+      }, 3000);
+    }
+
+    // 帮助模态框函数
+    function showHelpModal() {
+      helpModal.classList.remove('opacity-0', 'pointer-events-none');
+      helpModal.querySelector('div').classList.remove('scale-95');
+      helpModal.querySelector('div').classList.add('scale-100');
+    }
+
+    function hideHelpModal() {
+      helpModal.classList.add('opacity-0', 'pointer-events-none');
+      helpModal.querySelector('div').classList.remove('scale-100');
+      helpModal.querySelector('div').classList.add('scale-95');
+    }
+
+    // 主题切换
+    function checkThemePreference() {
+      if (localStorage.getItem('darkMode') === 'true' || 
+          (window.matchMedia('(prefers-color-scheme: dark)').matches && !localStorage.getItem('darkMode'))) {
+        enableDarkMode();
+      }
+    }
+
+    function toggleTheme() {
+      if (darkMode) {
+        disableDarkMode();
+      } else {
+        enableDarkMode();
+      }
+    }
+
+    function enableDarkMode() {
+      darkMode = true;
+      document.documentElement.classList.add('dark');
+      themeToggle.innerHTML = '<i class="fa fa-sun-o text-yellow-400"></i>';
+      localStorage.setItem('darkMode', 'true');
+      
+      // 更新UI元素
+      document.body.classList.add('bg-neutral');
+      document.body.classList.remove('bg-gradient-to-br', 'from-neutral-lightest', 'to-white');
+      document.querySelectorAll('.bg-white').forEach(el => {
+        el.classList.remove('bg-white');
+        el.classList.add('bg-neutral-light');
+      });
+      document.querySelectorAll('.text-neutral').forEach(el => {
+        el.classList.remove('text-neutral');
+        el.classList.add('text-white');
+      });
+      document.querySelectorAll('.text-neutral-light').forEach(el => {
+        el.classList.remove('text-neutral-light');
+        el.classList.add('text-neutral-lighter');
+      });
+      document.querySelectorAll('.hover:bg-neutral-lightest').forEach(el => {
+        el.classList.remove('hover:bg-neutral-lightest');
+        el.classList.add('hover:bg-neutral-lightest/20');
+      });
+      document.querySelectorAll('.bg-neutral-lightest').forEach(el => {
+        el.classList.remove('bg-neutral-lightest');
+        el.classList.add('bg-neutral-lightest/10');
+      });
+      document.querySelectorAll('.border-neutral-lightest').forEach(el => {
+        el.classList.remove('border-neutral-lightest');
+        el.classList.add('border-neutral-light');
+      });
+    }
+
+    function disableDarkMode() {
+      darkMode = false;
+      document.documentElement.classList.remove('dark');
+      themeToggle.innerHTML = '<i class="fa fa-moon-o text-neutral-light"></i>';
+      localStorage.setItem('darkMode', 'false');
+      
+      // 恢复UI元素
+      document.body.classList.remove('bg-neutral');
+      document.body.classList.add('bg-gradient-to-br', 'from-neutral-lightest', 'to-white');
+      document.querySelectorAll('.bg-neutral-light').forEach(el => {
+        el.classList.remove('bg-neutral-light');
+        el.classList.add('bg-white');
+      });
+      document.querySelectorAll('.text-white').forEach(el => {
+        el.classList.remove('text-white');
+        el.classList.add('text-neutral');
+      });
+      document.querySelectorAll('.text-neutral-lighter').forEach(el => {
+        el.classList.remove('text-neutral-lighter');
+        el.classList.add('text-neutral-light');
+      });
+      document.querySelectorAll('.hover:bg-neutral-lightest/20').forEach(el => {
+        el.classList.remove('hover:bg-neutral-lightest/20');
+        el.classList.add('hover:bg-neutral-lightest');
+      });
+      document.querySelectorAll('.bg-neutral-lightest/10').forEach(el => {
+        el.classList.remove('bg-neutral-lightest/10');
+        el.classList.add('bg-neutral-lightest');
+      });
+      document.querySelectorAll('.border-neutral-light').forEach(el => {
+        el.classList.remove('border-neutral-light');
+        el.classList.add('border-neutral-lightest');
+      });
+    }
+
+    // 调整UI
+    function adjustUI() {
+      // 根据屏幕宽度显示或隐藏音量滑块
+      if (window.innerWidth < 768) {
+        volumeContainer.classList.add('hidden');
+      } else {
+        volumeContainer.classList.remove('hidden');
+      }
+    }
+  </script>
+
+
+    </body></html>
